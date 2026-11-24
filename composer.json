@@ -91,6 +91,18 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "deps:audit": "composer audit",
+        "security": "trivy fs --config trivy.yaml .",
+        "pre-commit": [
+            "@lint:check",
+            "@types:check",
+            "npm run check"
+        ],
+        "check": [
+            "@ci:check",
+            "@deps:audit",
+            "@security"
         ]
     },
     "extra": {

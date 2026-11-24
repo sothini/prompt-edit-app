@@ -1,0 +1,16 @@
+# Nette packages are dual-licensed (MIT/GPL). 
+# We use them via Laravel under MIT terms.
+# Ignoring the GPL flags to keep reports clean.
+
+# nette/schema
+GPL-2.0-only
+GPL-3.0-only
+
+# nette/utils
+GPL-2.0-only
+GPL-3.0-only
+
+# Sail dev image: starts as root, drops to the sail user via gosu in start-container
+DS-0002
+# Sail dev image: image size only, not a security issue
+DS-0029

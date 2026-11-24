@@ -1,0 +1,24 @@
+exit-code: 1
+
+severity:
+    - HIGH
+    - CRITICAL
+
+scan:
+    scanners:
+        - vuln
+        - secret
+        - license
+        - misconfig
+    skip-dirs:
+        - vendor
+        - node_modules
+        - storage
+
+vulnerability:
+    ignore-unfixed: true
+
+license:
+    ignored:
+        - GPL-2.0-only
+        - GPL-3.0-only
