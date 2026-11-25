@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Link } from '@inertiajs/vue3';
-import { BookOpen, FolderGit2, LayoutGrid } from '@lucide/vue';
+import { BookOpen, FolderGit2, LayoutGrid, Sparkles } from '@lucide/vue';
 import AppLogo from '@/components/AppLogo.vue';
 import NavFooter from '@/components/NavFooter.vue';
 import NavMain from '@/components/NavMain.vue';
@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/sidebar';
 import { dashboard } from '@/routes';
 import type { NavItem } from '@/types';
+import { create as generate } from '@/actions/App/Http/Controllers/GenerationController';
 
 const mainNavItems: NavItem[] = [
     {
@@ -23,6 +24,7 @@ const mainNavItems: NavItem[] = [
         href: dashboard(),
         icon: LayoutGrid,
     },
+    { title: 'Generate', href: generate(), icon: Sparkles },
 ];
 
 const footerNavItems: NavItem[] = [
