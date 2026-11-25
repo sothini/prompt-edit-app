@@ -4,7 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Enums\ImageQuality;
 use App\Enums\ImageSize;
+use App\Http\Requests\EstimateGenerationRequest;
 use App\Http\Requests\StoreGenerationRequest;
+use App\Pixelforge\PixelforgePricing;
+use App\Pricing\PriceCalculator;
+use GuzzleHttp\Exception\RequestException;
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -34,5 +40,37 @@ class GenerationController extends Controller
     {
         // Step 5: create the generation and dispatch the submit job.
         return back();
+    }
+
+    public function estimate(
+        EstimateGenerationRequest $request,
+        PixelforgePricing $pricing,
+        PriceCalculator $calculator,
+    ): JsonResponse {
+        try {
+            $prices = $pricing->current();
+        } catch (ConnectionException|RequestException) {
+            return response()->json(['message' => 'Pricing is temporarily unavailable.'], 503);
+        }
+
+        $estimate = $calculator->estimate(
+            $prices,
+            $request->integer('characters'),
+            ImageSize::from($request->string('size')->value()),
+            ImageQuality::from($request->string('quality')->value()),
+            $request->integer('reference_images'),
+        );
+
+        return response()->json([
+            'min_price' => $estimate->minPrice,
+            'max_price' => $estimate->maxPrice,
+            'markup_percent' => (int) config('services.pixelforge.markup_percent'),
+            'tokens' => [
+                'input_text' => ['min' => $estimate->minTokens->inputText, 'max' => $estimate->maxTokens->inputText],
+                'input_image' => $estimate->maxTokens->inputImage,
+                'output' => $estimate->maxTokens->output,
+                'reasoning' => ['min' => $estimate->minTokens->reasoning, 'max' => $estimate->maxTokens->reasoning],
+            ],
+        ]);
     }
 }

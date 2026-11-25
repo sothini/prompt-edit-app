@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { Head, useForm } from '@inertiajs/vue3';
 import { ImagePlus, Sparkles, X } from '@lucide/vue';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import {
     create,
+    estimate as estimateRoute,
     store,
 } from '@/actions/App/Http/Controllers/GenerationController';
 import InputError from '@/components/InputError.vue';
@@ -18,6 +19,11 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
+
+import { watchDebounced } from '@vueuse/core';
+
+import { Skeleton } from '@/components/ui/skeleton';
+import { formatUsd } from '@/lib/money';
 
 type SizeOption = {
     value: string;
@@ -71,6 +77,81 @@ function referenceError(index: number): string | undefined {
 
 function submit(): void {
     form.post(store.url(), { preserveScroll: true });
+}
+
+type TokenRange = { min: number; max: number };
+type Estimate = {
+    min_price: number;
+    max_price: number;
+    markup_percent: number;
+    tokens: {
+        input_text: TokenRange;
+        input_image: number;
+        output: number;
+        reasoning: TokenRange;
+    };
+};
+
+const estimate = ref<Estimate | null>(null);
+const estimateError = ref<string | null>(null);
+const estimating = ref(false);
+let pendingEstimate: AbortController | null = null;
+
+// Only filled-in URLs are billed, so empty rows don't count.
+const referenceCount = computed(
+    () => form.reference_images.filter((url) => url.trim() !== '').length,
+);
+
+async function refreshEstimate(): Promise<void> {
+    pendingEstimate?.abort(); // a newer request replaces an older one
+    const request = new AbortController();
+    pendingEstimate = request;
+    estimating.value = true;
+
+    try {
+        const response = await fetch(
+            estimateRoute.url({
+                query: {
+                    characters: Math.min(
+                        promptLength.value,
+                        props.maxPromptLength,
+                    ),
+                    size: form.size,
+                    quality: form.quality,
+                    reference_images: referenceCount.value,
+                },
+            }),
+            { headers: { Accept: 'application/json' }, signal: request.signal },
+        );
+
+        if (!response.ok) {
+            throw new Error(`Estimate failed with ${response.status}`);
+        }
+
+        estimate.value = (await response.json()) as Estimate;
+        estimateError.value = null;
+    } catch (error) {
+        if (request.signal.aborted) {
+            return;
+        }
+        estimateError.value = 'The estimate is unavailable right now.';
+    } finally {
+        if (pendingEstimate === request) {
+            estimating.value = false;
+        }
+    }
+}
+
+watchDebounced(
+    () => [promptLength.value, form.size, form.quality, referenceCount.value],
+    () => void refreshEstimate(),
+    { debounce: 300, immediate: true },
+);
+
+function tokenRange(range: TokenRange): string {
+    return range.min === range.max
+        ? range.max.toLocaleString()
+        : `${range.min.toLocaleString()}–${range.max.toLocaleString()}`;
 }
 </script>
 
@@ -235,7 +316,53 @@ function submit(): void {
                     </CardDescription>
                 </CardHeader>
                 <CardContent class="grid gap-4">
-                    <p class="text-3xl font-semibold tabular-nums">—</p>
+                    <div class="min-h-9">
+                        <p
+                            v-if="estimate"
+                            class="text-2xl font-semibold tabular-nums transition-opacity"
+                            :class="{ 'opacity-50': estimating }"
+                        >
+                            {{ formatUsd(estimate.min_price) }} –
+                            {{ formatUsd(estimate.max_price) }}
+                        </p>
+                        <p
+                            v-else-if="estimateError"
+                            class="text-sm text-destructive"
+                        >
+                            {{ estimateError }}
+                        </p>
+                        <Skeleton v-else class="h-8 w-48" />
+                    </div>
+
+                    <dl
+                        v-if="estimate"
+                        class="grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-xs text-muted-foreground"
+                    >
+                        <dt>Prompt</dt>
+                        <dd class="text-right tabular-nums">
+                            {{ tokenRange(estimate.tokens.input_text) }} tokens
+                        </dd>
+                        <dt>Reference images</dt>
+                        <dd class="text-right tabular-nums">
+                            {{ estimate.tokens.input_image.toLocaleString() }}
+                            tokens
+                        </dd>
+                        <dt>Image output</dt>
+                        <dd class="text-right tabular-nums">
+                            {{ estimate.tokens.output.toLocaleString() }} tokens
+                        </dd>
+                        <dt>Reasoning</dt>
+                        <dd class="text-right tabular-nums">
+                            {{ tokenRange(estimate.tokens.reasoning) }} tokens
+                        </dd>
+                    </dl>
+
+                    <p v-if="estimate" class="text-xs text-muted-foreground">
+                        Includes a {{ estimate.markup_percent }}% service fee.
+                        Reasoning varies per image, so you pay the actual cost
+                        once it's ready. Failed generations are free.
+                    </p>
+
                     <Button type="submit" :disabled="form.processing">
                         <Spinner v-if="form.processing" />
                         <Sparkles v-else />
